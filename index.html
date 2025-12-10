@@ -1,35 +1,22 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jump Jump - 3D Music Rhythm Game</title>
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-    <div id="game-container">
-        <canvas id="game-canvas"></canvas>
-        <div id="ui-overlay">
-            <div id="score-display">Score: <span id="score">0</span></div>
-            <div id="power-bar-container">
-                <div id="power-bar"></div>
-            </div>
-            <div id="instructions">Hold SPACE to charge, release to jump</div>
-        </div>
-        <div id="game-over" class="hidden">
-            <h1>Game Over</h1>
-            <p>Final Score: <span id="final-score">0</span></p>
-            <button id="restart-btn">Play Again</button>
-        </div>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Jump Jump</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=false">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/89/three.min.js"></script>
+    <!-- New modular architecture (bundled for browser compatibility) -->
+    <script src="js/game.bundle.js"></script>
+  </head>
+  <body>
+    <div class="page startPage">
+      <button type="button" class="startBtn">开始游戏</button>
     </div>
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-        }
-    }
-    </script>
-    <script type="module" src="src/main.js?v=11"></script>
-</body>
+    <div class="page restartPage">
+      <p>游戏得分：<span class="scoreNum"></span></p>
+      <button type="button" class="restartBtn">重新开始</button>
+    </div>
+    <script src="js/main.js"></script>
+  </body>
 </html>
