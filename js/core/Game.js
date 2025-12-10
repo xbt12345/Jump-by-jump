@@ -312,48 +312,104 @@ class Game {
   _animateFallOff(state) {
     const direction = this.platformManager.getDirection();
     const rotateAxis = direction === 'z' ? 'x' : 'z';
-    const moveAxis = direction === 'z' ? 'z' : 'x';
     const rotateDirection = state === -1 ? -1 : 1;
     const targetRotation = rotateDirection * Math.PI / 2;
     
-    // Calculate horizontal velocity away from platform edge
+    // Get platforms for collision detection
     const currentPlatform = this.platformManager.getCurrentPlatform();
     const targetPlatform = this.platformManager.getTargetPlatform() || currentPlatform;
     
-    // Determine fall direction based on landing state
-    let horizontalVelocity = { x: 0, z: 0 };
-    const fallSpeed = 0.15;
+    // Determine which platform edge we're falling from
+    const nearestPlatform = targetPlatform;
+    const platformHalf = nearestPlatform.getHalfSize();
+    const platformTop = GameConfig.platform.cube.height;
+    const platformY = nearestPlatform.position.y || platformTop / 2;
     
-    if (state === -1) {
-      // Fell short - move backward (away from target)
-      horizontalVelocity[moveAxis] = direction === 'z' 
-        ? -fallSpeed * (this.jumper.position.z > targetPlatform.position.z ? 1 : -1)
-        : -fallSpeed * (this.jumper.position.x > targetPlatform.position.x ? 1 : -1);
-    } else if (state === -3) {
-      // Overshot - move forward (past target)
-      horizontalVelocity[moveAxis] = direction === 'z'
-        ? fallSpeed * (this.jumper.position.z > targetPlatform.position.z ? 1 : -1)
-        : fallSpeed * (this.jumper.position.x > targetPlatform.position.x ? 1 : -1);
-    }
+    // Calculate direction away from platform center (ensure we move AWAY from platform)
+    const dx = this.jumper.position.x - nearestPlatform.position.x;
+    const dz = this.jumper.position.z - nearestPlatform.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz) || 0.1;
+    
+    // Normalize and set minimum escape velocity
+    const escapeSpeed = 0.18;
+    let horizontalVelocity = {
+      x: (dx / dist) * escapeSpeed,
+      z: (dz / dist) * escapeSpeed
+    };
+    
+    // Ensure minimum horizontal movement to escape platform
+    if (Math.abs(horizontalVelocity.x) < 0.05) horizontalVelocity.x = (dx >= 0 ? 1 : -1) * 0.08;
+    if (Math.abs(horizontalVelocity.z) < 0.05) horizontalVelocity.z = (dz >= 0 ? 1 : -1) * 0.08;
+    
+    let verticalVelocity = 0;
+    let hasCleared = false;
+    let rotationProgress = 0;
+    const jumperRadius = GameConfig.jumper.bottomRadius;
     
     const self = this;
     const animateRotation = () => {
       const currentRotation = self.jumper.rotation[rotateAxis];
-      const reachedTarget = rotateDirection === -1 
+      const reachedTarget = rotateDirection === -1
         ? currentRotation <= targetRotation
         : currentRotation >= targetRotation;
-      
+
       if (!reachedTarget) {
+        // Rotate the jumper
         self.jumper.rotation[rotateAxis] += rotateDirection * 0.1;
-        // Move horizontally while rotating
-        self.jumper.position[moveAxis] += horizontalVelocity[moveAxis] * 0.5;
+        rotationProgress += 0.1;
+        
+        // Calculate current distance from platform center
+        const currDx = self.jumper.position.x - nearestPlatform.position.x;
+        const currDz = self.jumper.position.z - nearestPlatform.position.z;
+        const currDist = Math.sqrt(currDx * currDx + currDz * currDz);
+        
+        // Check if we've cleared the platform edge
+        const clearanceNeeded = Math.max(platformHalf.x, platformHalf.z) + jumperRadius + 0.3;
+        hasCleared = currDist > clearanceNeeded;
+        
+        // Always move horizontally away from platform
+        self.jumper.position.x += horizontalVelocity.x;
+        self.jumper.position.z += horizontalVelocity.z;
+        
+        // Only start falling after clearing the platform edge
+        if (hasCleared) {
+          verticalVelocity += 0.008;
+          self.jumper.position.y -= verticalVelocity;
+        } else {
+          // Slight upward arc while tipping over edge
+          if (rotationProgress < 0.8) {
+            self.jumper.position.y += 0.02;
+          }
+        }
+        
+        // Collision check - if still overlapping platform, push away harder
+        if (!hasCleared && self.jumper.position.y > platformY - 0.5) {
+          const pushX = currDx / (currDist || 0.1);
+          const pushZ = currDz / (currDist || 0.1);
+          self.jumper.position.x += pushX * 0.15;
+          self.jumper.position.z += pushZ * 0.15;
+        }
+        
         self.sceneManager.render();
         requestAnimationFrame(animateRotation);
       } else {
+        // Ensure we're clear of platform before falling
+        const finalDx = self.jumper.position.x - nearestPlatform.position.x;
+        const finalDz = self.jumper.position.z - nearestPlatform.position.z;
+        const finalDist = Math.sqrt(finalDx * finalDx + finalDz * finalDz);
+        const minClearance = Math.max(platformHalf.x, platformHalf.z) + jumperRadius;
+        
+        if (finalDist < minClearance) {
+          // Push out to clear the platform
+          const pushFactor = (minClearance - finalDist + 0.5) / (finalDist || 0.1);
+          self.jumper.position.x += finalDx * pushFactor;
+          self.jumper.position.z += finalDz * pushFactor;
+        }
+        
         self._animateFallDown(horizontalVelocity, () => self._triggerGameOver());
       }
     };
-    
+
     animateRotation();
   }
 
