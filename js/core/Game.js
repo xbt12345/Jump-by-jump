@@ -6,9 +6,12 @@ import PhysicsManager from '../managers/PhysicsManager.js';
 import ScoreManager from '../managers/ScoreManager.js';
 import PowerBarManager from '../managers/PowerBarManager.js';
 import Jumper from '../entities/Jumper.js';
+import Platform from '../entities/Platform.js';
 import GameConfig from '../utils/Constants.js';
 import ShadowSystem from '../systems/ShadowSystem.js';
 import AudioSystem from '../systems/AudioSystem.js';
+import TextureSystem from '../systems/TextureSystem.js';
+import BackgroundSystem from '../systems/BackgroundSystem.js';
 
 /**
  * Game - main game orchestrator
@@ -20,16 +23,25 @@ class Game {
     this.sceneManager = new SceneManager();
     this.eventManager = new EventManager(this.sceneManager.canvas);
     
+    // Rendering systems - initialize first
+    this.textureSystem = new TextureSystem();
+    this.shadowSystem = new ShadowSystem(this.sceneManager);
+    this.backgroundSystem = new BackgroundSystem(this.sceneManager);
+    this.audioSystem = new AudioSystem();
+    
+    // Setup texture system for entities
+    Platform.setTextureSystem(this.textureSystem);
+    Jumper.setTextureSystem(this.textureSystem);
+    
+    // Enable soft shadows
+    this.shadowSystem.enable('high');
+    
     // Managers
     this.platformManager = new PlatformManager(this.sceneManager);
     this.cameraController = new CameraController(this.sceneManager);
     this.physicsManager = new PhysicsManager();
     this.scoreManager = new ScoreManager();
     this.powerBarManager = new PowerBarManager();
-    
-    // Future systems (placeholders)
-    this.shadowSystem = new ShadowSystem(this.sceneManager);
-    this.audioSystem = new AudioSystem();
     
     // Entities
     this.jumper = null;
@@ -110,10 +122,14 @@ class Game {
     this.state.isJumping = false;
     this.state.isGameOver = false;
     
-    // Reset managers
+    // Reset managers and systems
     this.physicsManager.reset();
     this.scoreManager.reset();
     this.cameraController.reset();
+    this.textureSystem.reset();
+    
+    // Reset background position
+    this.backgroundSystem.updatePosition(0, 0);
     
     // Recreate game
     this.platformManager.createPlatform();
@@ -199,6 +215,8 @@ class Game {
         // Center landing - bonus points with combo
         this.scoreManager.addScore('center');
         this._resetJumperState();
+        // Update jumper landing position before creating next platform
+        this.platformManager.setJumperLandingPosition(this.jumper.position);
         this.platformManager.createPlatform();
         this._updateCamera();
         break;
@@ -207,21 +225,30 @@ class Game {
         // Normal landing on target
         this.scoreManager.addScore('normal');
         this._resetJumperState();
+        // Update jumper landing position before creating next platform
+        this.platformManager.setJumperLandingPosition(this.jumper.position);
         this.platformManager.createPlatform();
         this._updateCamera();
         break;
         
       case -2:
         // Fell between platforms or beyond
-        this._animateFallDown();
-        this._triggerGameOver();
+        const fallVel = { x: 0, z: 0 };
+        const currentPlat = this.platformManager.getCurrentPlatform();
+        if (currentPlat) {
+          const dx = this.jumper.position.x - currentPlat.position.x;
+          const dz = this.jumper.position.z - currentPlat.position.z;
+          const dist = Math.sqrt(dx * dx + dz * dz) || 1;
+          fallVel.x = (dx / dist) * 0.1;
+          fallVel.z = (dz / dist) * 0.1;
+        }
+        this._animateFallDown(fallVel, () => this._triggerGameOver());
         break;
         
       case -1:
       case -3:
         // Fell off edge
         this._animateFallOff(landingState);
-        this._triggerGameOver();
         break;
     }
   }
@@ -239,17 +266,43 @@ class Game {
     
     if (currentPlatform && targetPlatform) {
       this.cameraController.updateTarget(currentPlatform, targetPlatform);
+      
+      // Update shadow camera and background to follow action
+      const centerX = (currentPlatform.position.x + targetPlatform.position.x) / 2;
+      const centerZ = (currentPlatform.position.z + targetPlatform.position.z) / 2;
+      
+      this.shadowSystem.updateShadowCamera(new THREE.Vector3(centerX, 0, centerZ));
+      this.backgroundSystem.updatePosition(centerX, centerZ);
     }
   }
 
-  _animateFallDown() {
+  _animateFallDown(horizontalVelocity = { x: 0, z: 0 }, onComplete = null) {
     const groundLevel = -GameConfig.jumper.height / 2;
+    let velocityY = 0;
+    const gravity = 0.015;
+    const friction = 0.98;
     
     const animate = () => {
       if (this.jumper.position.y >= groundLevel) {
-        this.jumper.position.y -= GameConfig.physics.fallSpeed;
+        // Apply gravity
+        velocityY += gravity;
+        this.jumper.position.y -= velocityY;
+        
+        // Apply horizontal movement with friction
+        this.jumper.position.x += horizontalVelocity.x;
+        this.jumper.position.z += horizontalVelocity.z;
+        horizontalVelocity.x *= friction;
+        horizontalVelocity.z *= friction;
+        
+        // Add tumbling rotation during fall
+        this.jumper.rotation.x += 0.05;
+        this.jumper.rotation.z += 0.03;
+        
         this.sceneManager.render();
         requestAnimationFrame(animate);
+      } else {
+        // Animation complete - trigger callback
+        if (onComplete) onComplete();
       }
     };
     
@@ -259,21 +312,45 @@ class Game {
   _animateFallOff(state) {
     const direction = this.platformManager.getDirection();
     const rotateAxis = direction === 'z' ? 'x' : 'z';
+    const moveAxis = direction === 'z' ? 'z' : 'x';
     const rotateDirection = state === -1 ? -1 : 1;
     const targetRotation = rotateDirection * Math.PI / 2;
     
+    // Calculate horizontal velocity away from platform edge
+    const currentPlatform = this.platformManager.getCurrentPlatform();
+    const targetPlatform = this.platformManager.getTargetPlatform() || currentPlatform;
+    
+    // Determine fall direction based on landing state
+    let horizontalVelocity = { x: 0, z: 0 };
+    const fallSpeed = 0.15;
+    
+    if (state === -1) {
+      // Fell short - move backward (away from target)
+      horizontalVelocity[moveAxis] = direction === 'z' 
+        ? -fallSpeed * (this.jumper.position.z > targetPlatform.position.z ? 1 : -1)
+        : -fallSpeed * (this.jumper.position.x > targetPlatform.position.x ? 1 : -1);
+    } else if (state === -3) {
+      // Overshot - move forward (past target)
+      horizontalVelocity[moveAxis] = direction === 'z'
+        ? fallSpeed * (this.jumper.position.z > targetPlatform.position.z ? 1 : -1)
+        : fallSpeed * (this.jumper.position.x > targetPlatform.position.x ? 1 : -1);
+    }
+    
+    const self = this;
     const animateRotation = () => {
-      const currentRotation = this.jumper.rotation[rotateAxis];
+      const currentRotation = self.jumper.rotation[rotateAxis];
       const reachedTarget = rotateDirection === -1 
         ? currentRotation <= targetRotation
         : currentRotation >= targetRotation;
       
       if (!reachedTarget) {
-        this.jumper.rotation[rotateAxis] += rotateDirection * 0.1;
-        this.sceneManager.render();
+        self.jumper.rotation[rotateAxis] += rotateDirection * 0.1;
+        // Move horizontally while rotating
+        self.jumper.position[moveAxis] += horizontalVelocity[moveAxis] * 0.5;
+        self.sceneManager.render();
         requestAnimationFrame(animateRotation);
       } else {
-        this._animateFallDown();
+        self._animateFallDown(horizontalVelocity, () => self._triggerGameOver());
       }
     };
     
@@ -284,9 +361,10 @@ class Game {
     this.state.isGameOver = true;
     
     if (this.failCallback) {
+      // Small delay to let the final frame render
       setTimeout(() => {
         this.failCallback(this.scoreManager.getScore());
-      }, 1000);
+      }, 300);
     }
   }
 
@@ -319,6 +397,8 @@ class Game {
     this.powerBarManager.dispose();
     this.shadowSystem.dispose();
     this.audioSystem.dispose();
+    this.textureSystem.dispose();
+    this.backgroundSystem.dispose();
     
     if (this.jumper) {
       this.jumper.dispose();

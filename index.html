@@ -2,21 +2,79 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Jump Jump</title>
+    <title>Jump Jump - 跳一跳</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=false">
     <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/89/three.min.js"></script>
-    <!-- New modular architecture (bundled for browser compatibility) -->
     <script src="js/game.bundle.js"></script>
   </head>
   <body>
+    <!-- Start Screen -->
     <div class="page startPage">
-      <button type="button" class="startBtn">开始游戏</button>
+      <div class="game-logo">
+        <div class="logo-icon">🎮</div>
+        <h1 class="game-title">Jump Jump</h1>
+        <p class="game-subtitle">跳一跳</p>
+      </div>
+      <div class="start-content">
+        <div class="instructions">
+          <div class="instruction-item">
+            <span class="instruction-icon">👆</span>
+            <span>按住蓄力</span>
+          </div>
+          <div class="instruction-item">
+            <span class="instruction-icon">🎯</span>
+            <span>松开跳跃</span>
+          </div>
+          <div class="instruction-item">
+            <span class="instruction-icon">⭐</span>
+            <span>中心加分</span>
+          </div>
+        </div>
+        <button type="button" class="game-btn startBtn">
+          <span class="btn-text">开始游戏</span>
+          <span class="btn-icon">▶</span>
+        </button>
+        <p class="tip-text">提示：连续跳到中心可获得连击加分！</p>
+      </div>
+      <div class="decorations">
+        <div class="floating-shape shape1"></div>
+        <div class="floating-shape shape2"></div>
+        <div class="floating-shape shape3"></div>
+      </div>
     </div>
+
+    <!-- Game Over Screen -->
     <div class="page restartPage">
-      <p>游戏得分：<span class="scoreNum"></span></p>
-      <button type="button" class="restartBtn">重新开始</button>
+      <div class="game-over-content">
+        <div class="game-over-icon">🏆</div>
+        <h2 class="game-over-title">游戏结束</h2>
+        <div class="score-display">
+          <p class="score-label">最终得分</p>
+          <p class="final-score"><span class="scoreNum">0</span></p>
+        </div>
+        <div class="score-stars">
+          <span class="star">⭐</span>
+          <span class="star">⭐</span>
+          <span class="star">⭐</span>
+        </div>
+        <div class="game-over-message"></div>
+        <button type="button" class="game-btn restartBtn">
+          <span class="btn-text">再来一局</span>
+          <span class="btn-icon">🔄</span>
+        </button>
+        <button type="button" class="game-btn secondary-btn shareBtn">
+          <span class="btn-text">分享成绩</span>
+          <span class="btn-icon">📤</span>
+        </button>
+      </div>
+      <div class="decorations">
+        <div class="floating-shape shape1"></div>
+        <div class="floating-shape shape2"></div>
+      </div>
     </div>
+
     <script src="js/main.js"></script>
   </body>
 </html>

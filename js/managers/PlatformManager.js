@@ -4,13 +4,48 @@ import Helpers from '../utils/Helpers.js';
 
 /**
  * PlatformManager - handles platform generation, positioning, and lifecycle
- * Prepared for music-based platform generation
+ * Uses jumper landing position and consistent direction to ensure reachable platforms
  */
 class PlatformManager {
   constructor(sceneManager) {
     this.sceneManager = sceneManager;
     this.platforms = [];
     this.config = GameConfig.platform;
+    this.lastJumperPosition = null; // Track where jumper landed
+    this.lastDirection = null; // Track last platform direction for consistency
+  }
+
+  /**
+   * Update the last jumper landing position
+   * Called after successful landing to ensure next platform is reachable
+   */
+  setJumperLandingPosition(position) {
+    this.lastJumperPosition = { x: position.x, z: position.z };
+  }
+
+  /**
+   * Determine the next platform direction
+   * Ensures direction is reachable from current jumper position
+   */
+  _determineDirection() {
+    // First platform after start - random direction
+    if (this.platforms.length <= 1) {
+      this.lastDirection = Helpers.getRandomBoolean() ? 'xDir' : 'zDir';
+      return this.lastDirection;
+    }
+    
+    // Get current direction (how we got to current platform)
+    const currentDir = this.getDirection();
+    
+    // 70% chance to continue same direction, 30% to change
+    // This creates a more natural path while allowing turns
+    if (Math.random() < 0.7) {
+      this.lastDirection = currentDir === 'x' ? 'xDir' : 'zDir';
+    } else {
+      this.lastDirection = currentDir === 'x' ? 'zDir' : 'xDir';
+    }
+    
+    return this.lastDirection;
   }
 
   /**
@@ -22,8 +57,8 @@ class PlatformManager {
     // Determine platform type (can be overridden by music system)
     const type = options.type || (Helpers.getRandomBoolean() ? 'cube' : 'cylinder');
     
-    // Determine direction (can be overridden by music system)
-    const direction = options.direction || (Helpers.getRandomBoolean() ? 'xDir' : 'zDir');
+    // Determine direction - use smart direction selection
+    const direction = options.direction || this._determineDirection();
     
     const platform = new Platform(type);
     
@@ -57,20 +92,22 @@ class PlatformManager {
     // Using projectile motion: distance = vx * t, where t = 2 * vy / g
     const maxTime = 2 * physics.maxYSpeed / physics.gravity;
     const maxDistance = physics.maxXSpeed * maxTime;
-    return maxDistance * 0.85; // 85% of max for safety margin
+    return maxDistance * 0.8; // 80% of max for safety margin
   }
 
   /**
-   * Calculate position for next platform
+   * Calculate position for next platform based on jumper's landing position
    */
   _calculateNextPosition(newPlatform, direction, options = {}) {
     const lastPlatform = this.platforms[this.platforms.length - 1];
-    const lastPos = lastPlatform.position;
-    
+    const lastPlatformPos = lastPlatform.position;
     const lastSize = lastPlatform.getHalfSize();
     const newSize = newPlatform.getHalfSize();
     
-    // Calculate max jumpable gap (excluding platform sizes)
+    // Use jumper's actual landing position if available, otherwise use platform center
+    const jumpFromPos = this.lastJumperPosition || { x: lastPlatformPos.x, z: lastPlatformPos.z };
+    
+    // Calculate max jumpable gap from jumper's position
     const maxJumpable = this._getMaxJumpableDistance();
     const maxGap = Math.min(this.config.maxDistance, maxJumpable);
     
@@ -78,16 +115,26 @@ class PlatformManager {
     const distance = options.distance || 
       Helpers.getRandomValue(this.config.minDistance, maxGap);
     
-    let x = lastPos.x;
-    let y = lastPos.y;
-    let z = lastPos.z;
+    let x, y, z;
+    y = lastPlatformPos.y;
     
     if (direction === 'zDir') {
-      // Moving in -Z direction
-      z = lastPos.z - distance - lastSize.z - newSize.z;
+      // Moving in -Z direction - calculate from jumper position
+      // New platform center should be reachable from jumper's position
+      x = jumpFromPos.x; // Keep X aligned with jumper
+      z = jumpFromPos.z - distance - newSize.z;
+      
+      // Ensure minimum gap from platform edge
+      const minZ = lastPlatformPos.z - lastSize.z - this.config.minDistance - newSize.z;
+      z = Math.min(z, minZ);
     } else {
-      // Moving in +X direction
-      x = lastPos.x + distance + lastSize.x + newSize.x;
+      // Moving in +X direction - calculate from jumper position
+      z = jumpFromPos.z; // Keep Z aligned with jumper
+      x = jumpFromPos.x + distance + newSize.x;
+      
+      // Ensure minimum gap from platform edge
+      const minX = lastPlatformPos.x + lastSize.x + this.config.minDistance + newSize.x;
+      x = Math.max(x, minX);
     }
     
     return { x, y, z };
@@ -122,6 +169,7 @@ class PlatformManager {
 
   /**
    * Get direction between current and target platform
+   * Uses position difference to determine actual jump direction needed
    */
   getDirection() {
     if (this.platforms.length < 2) return null;
@@ -129,10 +177,17 @@ class PlatformManager {
     const from = this.getCurrentPlatform();
     const to = this.getTargetPlatform();
     
-    if (from.position.z === to.position.z) return 'x';
-    if (from.position.x === to.position.x) return 'z';
+    // Calculate the actual displacement
+    const dx = Math.abs(to.position.x - from.position.x);
+    const dz = Math.abs(to.position.z - from.position.z);
     
-    return null;
+    // Direction is determined by which axis has greater displacement
+    // This ensures jumper always jumps toward the target platform
+    if (dx > dz) {
+      return 'x'; // Jump in X direction
+    } else {
+      return 'z'; // Jump in Z direction
+    }
   }
 
   /**
@@ -151,6 +206,8 @@ class PlatformManager {
       platform.dispose();
     });
     this.platforms = [];
+    this.lastJumperPosition = null;
+    this.lastDirection = null;
   }
 
   /**

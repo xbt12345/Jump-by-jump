@@ -2,20 +2,28 @@ import GameConfig from '../utils/Constants.js';
 
 /**
  * Jumper entity - the player character
- * Handles jumper creation, scaling, and state
+ * Handles jumper creation, scaling, and state with textured materials
  */
 class Jumper {
+  static textureSystem = null;
+  
   constructor() {
     this.mesh = this._createMesh();
     this.config = GameConfig.jumper;
     this.physicsConfig = GameConfig.physics;
+    this.mesh.castShadow = true;
+    this.mesh.receiveShadow = true;
+  }
+
+  static setTextureSystem(system) {
+    Jumper.textureSystem = system;
   }
 
   _createMesh() {
-    const { topRadius, bottomRadius, height, color, segments } = GameConfig.jumper;
+    const { topRadius, bottomRadius, height, segments } = GameConfig.jumper;
     
     const geometry = new THREE.CylinderGeometry(topRadius, bottomRadius, height, segments);
-    const material = new THREE.MeshLambertMaterial({ color });
+    const material = this._createMaterial();
     const mesh = new THREE.Mesh(geometry, material);
     
     // Translate geometry so bottom is at y=0
@@ -23,6 +31,16 @@ class Jumper {
     mesh.position.set(0, height / 2, 0);
     
     return mesh;
+  }
+
+  _createMaterial() {
+    // Use textured material if texture system is available
+    if (Jumper.textureSystem) {
+      return Jumper.textureSystem.createJumperMaterial();
+    }
+    // Fallback to basic material
+    const { color } = GameConfig.jumper;
+    return new THREE.MeshLambertMaterial({ color });
   }
 
   /**

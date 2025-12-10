@@ -2,7 +2,7 @@ import GameConfig from '../utils/Constants.js';
 
 /**
  * CameraController - handles camera movement and transitions
- * Uses smooth lerp-based animation for fluid camera movement
+ * Uses smooth easing-based animation for fluid camera movement
  */
 class CameraController {
   constructor(sceneManager) {
@@ -11,7 +11,24 @@ class CameraController {
     
     this.currentPosition = new THREE.Vector3(0, 0, 0);
     this.targetPosition = new THREE.Vector3(0, 0, 0);
+    this.startPosition = new THREE.Vector3(0, 0, 0);
     this.isAnimating = false;
+    this.animationProgress = 0;
+    this.animationDuration = 60; // frames (~1 second at 60fps)
+  }
+
+  /**
+   * Smooth easing function (ease-out cubic)
+   */
+  _easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  /**
+   * Smooth easing function (ease-in-out cubic)
+   */
+  _easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   }
 
   /**
@@ -23,12 +40,13 @@ class CameraController {
 
   /**
    * Update camera target based on platform positions
-   * @param {Platform} fromPlatform - Current platform
-   * @param {Platform} toPlatform - Target platform
    */
   updateTarget(fromPlatform, toPlatform) {
     const fromPos = fromPlatform.position;
     const toPos = toPlatform.position;
+    
+    // Store start position for easing
+    this.startPosition.copy(this.currentPosition);
     
     this.targetPosition.set(
       (fromPos.x + toPos.x) / 2,
@@ -36,11 +54,13 @@ class CameraController {
       (fromPos.z + toPos.z) / 2
     );
     
+    // Reset animation progress
+    this.animationProgress = 0;
     this._animateToTarget();
   }
 
   /**
-   * Animate camera to target position using smooth lerp
+   * Animate camera to target position using smooth easing
    */
   _animateToTarget() {
     if (this.isAnimating) return;
@@ -51,15 +71,14 @@ class CameraController {
   _animate() {
     const current = this.currentPosition;
     const target = this.targetPosition;
-    const smoothFactor = this.config.smoothFactor;
+    const start = this.startPosition;
     
-    // Calculate distance to target
-    const dx = Math.abs(target.x - current.x);
-    const dz = Math.abs(target.z - current.z);
-    const threshold = 0.01;
+    // Increment progress
+    this.animationProgress += 1 / this.animationDuration;
     
-    // Check if we've reached the target
-    if (dx < threshold && dz < threshold) {
+    // Clamp progress to 1
+    if (this.animationProgress >= 1) {
+      this.animationProgress = 1;
       current.x = target.x;
       current.z = target.z;
       this.sceneManager.lookAt(new THREE.Vector3(current.x, 0, current.z));
@@ -68,9 +87,12 @@ class CameraController {
       return;
     }
     
-    // Smooth lerp towards target
-    current.x = this._lerp(current.x, target.x, smoothFactor);
-    current.z = this._lerp(current.z, target.z, smoothFactor);
+    // Apply easing
+    const easedProgress = this._easeOutCubic(this.animationProgress);
+    
+    // Interpolate position with easing
+    current.x = this._lerp(start.x, target.x, easedProgress);
+    current.z = this._lerp(start.z, target.z, easedProgress);
     
     this.sceneManager.lookAt(new THREE.Vector3(current.x, 0, current.z));
     this.sceneManager.render();
@@ -91,7 +113,9 @@ class CameraController {
   reset() {
     this.currentPosition.set(0, 0, 0);
     this.targetPosition.set(0, 0, 0);
+    this.startPosition.set(0, 0, 0);
     this.isAnimating = false;
+    this.animationProgress = 0;
     this.lookAtCurrent();
   }
 }

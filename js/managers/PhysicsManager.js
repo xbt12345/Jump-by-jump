@@ -102,39 +102,12 @@ class PhysicsManager {
 
   /**
    * Check if jumper is on a platform using 2D bounds
+   * Improved detection for both cube and cylinder platforms
    * @returns {Object} { fully: boolean, partial: boolean }
    */
   _isOnPlatform(jumperPos, platform, jumperRadius) {
     const platPos = platform.position;
     const halfSize = platform.getHalfSize();
-    
-    // Calculate jumper bounds
-    const jMinX = jumperPos.x - jumperRadius;
-    const jMaxX = jumperPos.x + jumperRadius;
-    const jMinZ = jumperPos.z - jumperRadius;
-    const jMaxZ = jumperPos.z + jumperRadius;
-    
-    // Calculate platform bounds
-    const pMinX = platPos.x - halfSize.x;
-    const pMaxX = platPos.x + halfSize.x;
-    const pMinZ = platPos.z - halfSize.z;
-    const pMaxZ = platPos.z + halfSize.z;
-    
-    // Check if jumper center is within platform
-    const centerInX = jumperPos.x >= pMinX && jumperPos.x <= pMaxX;
-    const centerInZ = jumperPos.z >= pMinZ && jumperPos.z <= pMaxZ;
-    const centerInPlatform = centerInX && centerInZ;
-    
-    // Check if jumper is fully within platform (with some tolerance)
-    const tolerance = jumperRadius * 0.3; // 30% tolerance for "fully on"
-    const fullyInX = jMinX >= pMinX - tolerance && jMaxX <= pMaxX + tolerance;
-    const fullyInZ = jMinZ >= pMinZ - tolerance && jMaxZ <= pMaxZ + tolerance;
-    const fullyOn = centerInPlatform && fullyInX && fullyInZ;
-    
-    // Check if jumper is partially on platform (edge case)
-    const overlapX = jMaxX > pMinX && jMinX < pMaxX;
-    const overlapZ = jMaxZ > pMinZ && jMinZ < pMaxZ;
-    const partiallyOn = overlapX && overlapZ && !fullyOn;
     
     // For cylinder platforms, use circular bounds check
     if (platform.type === 'cylinder') {
@@ -143,18 +116,48 @@ class PhysicsManager {
       const distFromCenter = Math.sqrt(dx * dx + dz * dz);
       const platformRadius = halfSize.x;
       
-      const fullyOnCylinder = distFromCenter + jumperRadius * 0.7 <= platformRadius;
-      const partiallyOnCylinder = distFromCenter - jumperRadius < platformRadius && 
-                                   distFromCenter + jumperRadius > platformRadius;
+      // More generous tolerance for cylinder - if center is on platform, count as fully on
+      const centerOnPlatform = distFromCenter <= platformRadius;
+      const fullyOnCylinder = distFromCenter + jumperRadius * 0.5 <= platformRadius;
+      const partiallyOnCylinder = distFromCenter < platformRadius + jumperRadius && 
+                                   distFromCenter > platformRadius - jumperRadius;
       
       return {
-        fully: fullyOnCylinder,
-        partial: partiallyOnCylinder && !fullyOnCylinder
+        fully: fullyOnCylinder || centerOnPlatform,
+        partial: partiallyOnCylinder && !centerOnPlatform
       };
     }
     
+    // For cube platforms
+    // Calculate platform bounds
+    const pMinX = platPos.x - halfSize.x;
+    const pMaxX = platPos.x + halfSize.x;
+    const pMinZ = platPos.z - halfSize.z;
+    const pMaxZ = platPos.z + halfSize.z;
+    
+    // Check if jumper center is within platform bounds
+    const centerInX = jumperPos.x >= pMinX && jumperPos.x <= pMaxX;
+    const centerInZ = jumperPos.z >= pMinZ && jumperPos.z <= pMaxZ;
+    const centerInPlatform = centerInX && centerInZ;
+    
+    // If center is on platform, consider it fully on (more forgiving)
+    if (centerInPlatform) {
+      return { fully: true, partial: false };
+    }
+    
+    // Calculate jumper bounds for edge detection
+    const jMinX = jumperPos.x - jumperRadius;
+    const jMaxX = jumperPos.x + jumperRadius;
+    const jMinZ = jumperPos.z - jumperRadius;
+    const jMaxZ = jumperPos.z + jumperRadius;
+    
+    // Check if jumper is partially on platform (edge case)
+    const overlapX = jMaxX > pMinX && jMinX < pMaxX;
+    const overlapZ = jMaxZ > pMinZ && jMinZ < pMaxZ;
+    const partiallyOn = overlapX && overlapZ;
+    
     return {
-      fully: fullyOn || centerInPlatform,
+      fully: false,
       partial: partiallyOn
     };
   }

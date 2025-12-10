@@ -1,6 +1,6 @@
 /**
  * Jump Jump Game - Bundled Version
- * This file combines all modules for non-ES6 module environments
+ * Enhanced with textures, soft shadows, and animated backgrounds
  */
 
 (function() {
@@ -76,13 +76,13 @@
       maxDistance: 3
     },
     physics: {
-      xAcceleration: 0.0008,
-      yAcceleration: 0.0016,
-      gravity: 0.01,
-      scaleDecrement: 0.002,
-      scaleIncrement: 0.02,
+      xAcceleration: 0.0016,
+      yAcceleration: 0.0032,
+      gravity: 0.012,
+      scaleDecrement: 0.004,
+      scaleIncrement: 0.04,
       minScale: 0.02,
-      fallSpeed: 0.06,
+      fallSpeed: 0.08,
       maxXSpeed: 0.25,
       maxYSpeed: 0.5
     },
@@ -92,7 +92,7 @@
       far: 5000,
       position: { x: 100, y: 100, z: 100 },
       moveSpeed: 0.05,
-      smoothFactor: 0.08
+      smoothFactor: 0.04
     },
     lighting: {
       directional: { color: 0xffffff, intensity: 1.1, position: { x: 3, y: 10, z: 15 } },
@@ -105,15 +105,552 @@
     }
   };
 
+  // ============================================
+  // Systems: TextureSystem (Matte Plastic Textures)
+  // ============================================
+  class TextureSystem {
+    constructor() {
+      this.textureCache = new Map();
+      this.platformColors = [
+        { base: '#4CAF50', accent: '#388E3C', highlight: '#81C784' },
+        { base: '#2196F3', accent: '#1976D2', highlight: '#64B5F6' },
+        { base: '#9C27B0', accent: '#7B1FA2', highlight: '#BA68C8' },
+        { base: '#F44336', accent: '#D32F2F', highlight: '#E57373' },
+        { base: '#FF9800', accent: '#F57C00', highlight: '#FFB74D' },
+        { base: '#00BCD4', accent: '#0097A7', highlight: '#4DD0E1' },
+        { base: '#795548', accent: '#5D4037', highlight: '#A1887F' },
+        { base: '#607D8B', accent: '#455A64', highlight: '#90A4AE' },
+      ];
+      this.colorIndex = 0;
+    }
+
+    _createCanvasTexture(width, height, drawFunc) {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      drawFunc(ctx, width, height);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      return texture;
+    }
+
+    _addPlasticGrain(ctx, w, h, intensity) {
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const data = imageData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const noise = (Math.random() - 0.5) * intensity;
+        data[i] = Math.max(0, Math.min(255, data[i] + noise));
+        data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
+        data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise));
+      }
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    _addSurfaceImperfections(ctx, w, h) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i < 15; i++) {
+        const x1 = Math.random() * w;
+        const y1 = Math.random() * h;
+        const len = Math.random() * 30 + 10;
+        const angle = Math.random() * Math.PI;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x1 + Math.cos(angle) * len, y1 + Math.sin(angle) * len);
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.015)';
+      for (let i = 0; i < 30; i++) {
+        ctx.beginPath();
+        ctx.arc(Math.random() * w, Math.random() * h, Math.random() * 1.5 + 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    createPlatformTexture(type = 'cube') {
+      const colors = this.platformColors[this.colorIndex % this.platformColors.length];
+      this.colorIndex++;
+
+      return this._createCanvasTexture(512, 512, (ctx, w, h) => {
+        // Solid matte base
+        ctx.fillStyle = colors.base;
+        ctx.fillRect(0, 0, w, h);
+
+        // Subtle gradient (very subtle for matte)
+        const baseGrad = ctx.createLinearGradient(0, 0, w * 0.7, h * 0.7);
+        baseGrad.addColorStop(0, colors.highlight + '20');
+        baseGrad.addColorStop(0.5, 'transparent');
+        baseGrad.addColorStop(1, colors.accent + '30');
+        ctx.fillStyle = baseGrad;
+        ctx.fillRect(0, 0, w, h);
+
+        // Soft top highlight
+        const topHL = ctx.createLinearGradient(0, 0, 0, h * 0.25);
+        topHL.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
+        topHL.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = topHL;
+        ctx.fillRect(0, 0, w, h * 0.25);
+
+        // Left edge highlight
+        const leftHL = ctx.createLinearGradient(0, 0, w * 0.15, 0);
+        leftHL.addColorStop(0, 'rgba(255, 255, 255, 0.08)');
+        leftHL.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = leftHL;
+        ctx.fillRect(0, 0, w * 0.15, h);
+
+        // Bottom shadow
+        const bottomSH = ctx.createLinearGradient(0, h * 0.8, 0, h);
+        bottomSH.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        bottomSH.addColorStop(1, 'rgba(0, 0, 0, 0.15)');
+        ctx.fillStyle = bottomSH;
+        ctx.fillRect(0, h * 0.8, w, h * 0.2);
+
+        // Right shadow
+        const rightSH = ctx.createLinearGradient(w * 0.85, 0, w, 0);
+        rightSH.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        rightSH.addColorStop(1, 'rgba(0, 0, 0, 0.1)');
+        ctx.fillStyle = rightSH;
+        ctx.fillRect(w * 0.85, 0, w * 0.15, h);
+
+        // Subtle embossed grid
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.03)';
+        ctx.lineWidth = 1;
+        for (let x = 64; x < w; x += 64) {
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+        }
+        for (let y = 64; y < h; y += 64) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+        }
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
+        for (let x = 63; x < w; x += 64) {
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+        }
+        for (let y = 63; y < h; y += 64) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+        }
+
+        this._addPlasticGrain(ctx, w, h, 6);
+        this._addSurfaceImperfections(ctx, w, h);
+      });
+    }
+
+    createJumperTexture() {
+      return this._createCanvasTexture(512, 1024, (ctx, w, h) => {
+        // Matte golden plastic
+        ctx.fillStyle = '#FFC107';
+        ctx.fillRect(0, 0, w, h);
+
+        // Cylindrical shading
+        const cylGrad = ctx.createLinearGradient(0, 0, w, 0);
+        cylGrad.addColorStop(0, '#FF8F0060');
+        cylGrad.addColorStop(0.2, 'transparent');
+        cylGrad.addColorStop(0.35, '#FFE08230');
+        cylGrad.addColorStop(0.5, '#FFE08220');
+        cylGrad.addColorStop(0.65, 'transparent');
+        cylGrad.addColorStop(1, '#FF8F0050');
+        ctx.fillStyle = cylGrad;
+        ctx.fillRect(0, 0, w, h);
+
+        // Horizontal bands
+        for (let y = 0; y < h; y += 200) {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+          ctx.fillRect(0, y, w, 6);
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+          ctx.fillRect(0, y + 6, w, 2);
+        }
+
+        // Top dome highlight
+        const topHL = ctx.createLinearGradient(0, 0, 0, h * 0.2);
+        topHL.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
+        topHL.addColorStop(0.5, 'rgba(255, 255, 255, 0.1)');
+        topHL.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = topHL;
+        ctx.fillRect(0, 0, w, h * 0.2);
+
+        // Bottom shadow
+        const bottomSH = ctx.createLinearGradient(0, h * 0.85, 0, h);
+        bottomSH.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        bottomSH.addColorStop(1, 'rgba(0, 0, 0, 0.2)');
+        ctx.fillStyle = bottomSH;
+        ctx.fillRect(0, h * 0.85, w, h * 0.15);
+
+        this._addPlasticGrain(ctx, w, h, 5);
+        this._addSurfaceImperfections(ctx, w, h);
+      });
+    }
+
+    createBumpMap() {
+      return this._createCanvasTexture(256, 256, (ctx, w, h) => {
+        ctx.fillStyle = '#808080';
+        ctx.fillRect(0, 0, w, h);
+        for (let i = 0; i < 100; i++) {
+          const x = Math.random() * w;
+          const y = Math.random() * h;
+          const r = Math.random() * 10 + 5;
+          const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+          grad.addColorStop(0, '#c0c0c0');
+          grad.addColorStop(1, '#808080');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+    }
+
+    createPlatformMaterial(type = 'cube') {
+      const texture = this.createPlatformTexture(type);
+      return new THREE.MeshLambertMaterial({
+        map: texture
+      });
+    }
+
+    createJumperMaterial() {
+      const texture = this.createJumperTexture();
+      return new THREE.MeshLambertMaterial({
+        map: texture
+      });
+    }
+
+    reset() { this.colorIndex = 0; }
+    dispose() {
+      this.textureCache.forEach(texture => texture.dispose());
+      this.textureCache.clear();
+    }
+  }
 
   // ============================================
-  // Entities: Platform
+  // Systems: ShadowSystem
+  // ============================================
+  class ShadowSystem {
+    constructor(sceneManager) {
+      this.sceneManager = sceneManager;
+      this.enabled = false;
+      this.quality = 'high';
+      this.lights = [];
+    }
+
+    enable(quality = 'high') {
+      this.quality = quality;
+      this.enabled = true;
+      
+      const renderer = this.sceneManager.renderer;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      
+      this._setupLighting();
+    }
+
+    _setupLighting() {
+      const scene = this.sceneManager.scene;
+      
+      if (this.sceneManager.lights.directional) {
+        scene.remove(this.sceneManager.lights.directional);
+      }
+      if (this.sceneManager.lights.ambient) {
+        scene.remove(this.sceneManager.lights.ambient);
+      }
+
+      const shadowMapSize = { low: 512, medium: 1024, high: 2048 }[this.quality];
+      
+      // Main directional light with soft shadows
+      const mainLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      mainLight.position.set(30, 50, 30);
+      mainLight.castShadow = true;
+      mainLight.shadow.mapSize.width = shadowMapSize;
+      mainLight.shadow.mapSize.height = shadowMapSize;
+      mainLight.shadow.camera.near = 0.5;
+      mainLight.shadow.camera.far = 200;
+      mainLight.shadow.camera.left = -50;
+      mainLight.shadow.camera.right = 50;
+      mainLight.shadow.camera.top = 50;
+      mainLight.shadow.camera.bottom = -50;
+      mainLight.shadow.bias = -0.0005;
+      scene.add(mainLight);
+      this.lights.push(mainLight);
+      this.sceneManager.lights.main = mainLight;
+
+      // Fill light (no shadow for performance)
+      const fillLight = new THREE.DirectionalLight(0x87ceeb, 0.3);
+      fillLight.position.set(-20, 30, -20);
+      scene.add(fillLight);
+      this.lights.push(fillLight);
+      this.sceneManager.lights.fill = fillLight;
+
+      // Hemisphere light for natural ambient
+      const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x8b7355, 0.4);
+      hemiLight.position.set(0, 50, 0);
+      scene.add(hemiLight);
+      this.lights.push(hemiLight);
+
+      // Ambient light
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+      scene.add(ambientLight);
+      this.lights.push(ambientLight);
+
+      // Warm accent light
+      const warmLight = new THREE.PointLight(0xffaa44, 0.3, 100);
+      warmLight.position.set(10, 20, 10);
+      scene.add(warmLight);
+      this.lights.push(warmLight);
+    }
+
+    configureMesh(mesh, cast = true, receive = true) {
+      if (!this.enabled) return;
+      mesh.castShadow = cast;
+      mesh.receiveShadow = receive;
+    }
+
+    updateShadowCamera(target) {
+      if (!this.enabled) return;
+      const mainLight = this.sceneManager.lights.main;
+      const fillLight = this.sceneManager.lights.fill;
+      
+      if (mainLight) {
+        mainLight.position.x = target.x + 30;
+        mainLight.position.z = target.z + 30;
+        mainLight.target.position.copy(target);
+        mainLight.target.updateMatrixWorld();
+      }
+      if (fillLight) {
+        fillLight.position.x = target.x - 20;
+        fillLight.position.z = target.z - 20;
+        fillLight.target.position.copy(target);
+        fillLight.target.updateMatrixWorld();
+      }
+    }
+
+    dispose() {
+      this.lights.forEach(light => this.sceneManager.scene.remove(light));
+      this.lights = [];
+    }
+  }
+
+  // ============================================
+  // Systems: BackgroundSystem
+  // ============================================
+  class BackgroundSystem {
+    constructor(sceneManager) {
+      this.sceneManager = sceneManager;
+      this.particles = null;
+      this.particleCount = 200;
+      this.particleVelocities = [];
+      this.skyMesh = null;
+      this.groundMesh = null;
+      this.time = 0;
+      this.isAnimating = false;
+      this._init();
+    }
+
+    _init() {
+      this._createGradientSky();
+      this._createGroundPlane();
+      this._createParticles();
+      this._startAnimation();
+    }
+
+    _createGradientSky() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+
+      const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      gradient.addColorStop(0, '#1a237e');
+      gradient.addColorStop(0.3, '#3949ab');
+      gradient.addColorStop(0.6, '#7986cb');
+      gradient.addColorStop(0.8, '#c5cae9');
+      gradient.addColorStop(1, '#e8eaf6');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      for (let i = 0; i < 20; i++) {
+        const x = Math.random() * canvas.width;
+        const y = Math.random() * canvas.height * 0.6;
+        const w = Math.random() * 100 + 50;
+        const h = Math.random() * 30 + 10;
+        ctx.beginPath();
+        ctx.ellipse(x, y, w, h, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      const texture = new THREE.CanvasTexture(canvas);
+      const geometry = new THREE.SphereGeometry(500, 32, 32);
+      const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        side: THREE.BackSide,
+        fog: false
+      });
+      this.skyMesh = new THREE.Mesh(geometry, material);
+      this.sceneManager.add(this.skyMesh);
+    }
+
+    _createGroundPlane() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+
+      const gradient = ctx.createRadialGradient(256, 256, 0, 256, 256, 360);
+      gradient.addColorStop(0, '#e0e0e0');
+      gradient.addColorStop(0.5, '#bdbdbd');
+      gradient.addColorStop(1, '#9e9e9e');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = 1;
+      const gridSize = 32;
+      for (let x = 0; x <= canvas.width; x += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= canvas.height; y += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(20, 20);
+
+      const geometry = new THREE.PlaneGeometry(1000, 1000);
+      const material = new THREE.MeshLambertMaterial({
+        map: texture
+      });
+      this.groundMesh = new THREE.Mesh(geometry, material);
+      this.groundMesh.rotation.x = -Math.PI / 2;
+      this.groundMesh.position.y = -1.5;
+      this.groundMesh.receiveShadow = true;
+      this.sceneManager.add(this.groundMesh);
+    }
+
+    _createParticles() {
+      const geometry = new THREE.BufferGeometry();
+      const positions = new Float32Array(this.particleCount * 3);
+      const colors = new Float32Array(this.particleCount * 3);
+
+      for (let i = 0; i < this.particleCount; i++) {
+        positions[i * 3] = (Math.random() - 0.5) * 200;
+        positions[i * 3 + 1] = Math.random() * 50 + 5;
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 200;
+
+        colors[i * 3] = 0.8 + Math.random() * 0.2;
+        colors[i * 3 + 1] = 0.8 + Math.random() * 0.2;
+        colors[i * 3 + 2] = 0.9 + Math.random() * 0.1;
+
+        this.particleVelocities.push({
+          x: (Math.random() - 0.5) * 0.02,
+          y: (Math.random() - 0.5) * 0.01,
+          z: (Math.random() - 0.5) * 0.02
+        });
+      }
+
+      geometry.addAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geometry.addAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+      const material = new THREE.PointsMaterial({
+        size: 0.5,
+        vertexColors: THREE.VertexColors,
+        transparent: true,
+        opacity: 0.6,
+        sizeAttenuation: true
+      });
+
+      this.particles = new THREE.Points(geometry, material);
+      this.sceneManager.add(this.particles);
+    }
+
+    _startAnimation() {
+      this.isAnimating = true;
+      this._animate();
+    }
+
+    _animate() {
+      if (!this.isAnimating) return;
+      this.time += 0.01;
+
+      if (this.particles) {
+        const positions = this.particles.geometry.attributes.position.array;
+        for (let i = 0; i < this.particleCount; i++) {
+          const vel = this.particleVelocities[i];
+          positions[i * 3] += vel.x;
+          positions[i * 3 + 1] += vel.y + Math.sin(this.time + i) * 0.005;
+          positions[i * 3 + 2] += vel.z;
+
+          if (positions[i * 3] > 100) positions[i * 3] = -100;
+          if (positions[i * 3] < -100) positions[i * 3] = 100;
+          if (positions[i * 3 + 2] > 100) positions[i * 3 + 2] = -100;
+          if (positions[i * 3 + 2] < -100) positions[i * 3 + 2] = 100;
+          if (positions[i * 3 + 1] > 55) positions[i * 3 + 1] = 5;
+          if (positions[i * 3 + 1] < 5) positions[i * 3 + 1] = 55;
+        }
+        this.particles.geometry.attributes.position.needsUpdate = true;
+      }
+
+      if (this.skyMesh) {
+        this.skyMesh.rotation.y += 0.0001;
+      }
+
+      requestAnimationFrame(() => this._animate());
+    }
+
+    updatePosition(x, z) {
+      if (this.groundMesh) {
+        this.groundMesh.position.x = x;
+        this.groundMesh.position.z = z;
+      }
+      if (this.skyMesh) {
+        this.skyMesh.position.x = x;
+        this.skyMesh.position.z = z;
+      }
+    }
+
+    dispose() {
+      this.isAnimating = false;
+      if (this.particles) {
+        this.particles.geometry.dispose();
+        this.particles.material.dispose();
+        this.sceneManager.remove(this.particles);
+      }
+      if (this.skyMesh) {
+        this.skyMesh.geometry.dispose();
+        this.skyMesh.material.dispose();
+        this.sceneManager.remove(this.skyMesh);
+      }
+      if (this.groundMesh) {
+        this.groundMesh.geometry.dispose();
+        this.groundMesh.material.dispose();
+        this.sceneManager.remove(this.groundMesh);
+      }
+    }
+  }
+
+
+  // ============================================
+  // Entities: Platform (with textures)
   // ============================================
   class Platform {
+    static textureSystem = null;
+
     constructor(type = 'cube', size = null) {
       this.type = type;
       this.size = size || this._generateRandomSize();
       this.mesh = this._createMesh();
+      this.mesh.castShadow = true;
+      this.mesh.receiveShadow = true;
+    }
+
+    static setTextureSystem(system) {
+      Platform.textureSystem = system;
     }
 
     _generateRandomSize() {
@@ -125,9 +662,7 @@
         };
       } else {
         const { minRadius, maxRadius } = GameConfig.platform.cylinder;
-        return {
-          radius: minRadius + Math.random() * (maxRadius - minRadius)
-        };
+        return { radius: minRadius + Math.random() * (maxRadius - minRadius) };
       }
     }
 
@@ -148,6 +683,9 @@
     }
 
     _createMaterial() {
+      if (Platform.textureSystem) {
+        return Platform.textureSystem.createPlatformMaterial(this.type);
+      }
       const color = this.type === 'cube' 
         ? GameConfig.platform.cube.color 
         : GameConfig.platform.cylinder.color;
@@ -169,28 +707,46 @@
       if (this.mesh) {
         this.mesh.geometry.dispose();
         this.mesh.material.dispose();
+        if (this.mesh.material.map) this.mesh.material.map.dispose();
+        if (this.mesh.material.bumpMap) this.mesh.material.bumpMap.dispose();
       }
     }
   }
 
   // ============================================
-  // Entities: Jumper
+  // Entities: Jumper (with textures)
   // ============================================
   class Jumper {
+    static textureSystem = null;
+
     constructor() {
       this.mesh = this._createMesh();
       this.config = GameConfig.jumper;
       this.physicsConfig = GameConfig.physics;
+      this.mesh.castShadow = true;
+      this.mesh.receiveShadow = true;
+    }
+
+    static setTextureSystem(system) {
+      Jumper.textureSystem = system;
     }
 
     _createMesh() {
-      const { topRadius, bottomRadius, height, color, segments } = GameConfig.jumper;
+      const { topRadius, bottomRadius, height, segments } = GameConfig.jumper;
       const geometry = new THREE.CylinderGeometry(topRadius, bottomRadius, height, segments);
-      const material = new THREE.MeshLambertMaterial({ color });
+      const material = this._createMaterial();
       const mesh = new THREE.Mesh(geometry, material);
       geometry.translate(0, height / 2, 0);
       mesh.position.set(0, height / 2, 0);
       return mesh;
+    }
+
+    _createMaterial() {
+      if (Jumper.textureSystem) {
+        return Jumper.textureSystem.createJumperMaterial();
+      }
+      const { color } = GameConfig.jumper;
+      return new THREE.MeshLambertMaterial({ color });
     }
 
     get position() { return this.mesh.position; }
@@ -227,10 +783,10 @@
       if (this.mesh) {
         this.mesh.geometry.dispose();
         this.mesh.material.dispose();
+        if (this.mesh.material.map) this.mesh.material.map.dispose();
       }
     }
   }
-
 
   // ============================================
   // Core: SceneManager
@@ -351,20 +907,40 @@
     }
   }
 
-
   // ============================================
-  // Managers: PlatformManager
+  // Managers: PlatformManager (with smart direction)
   // ============================================
   class PlatformManager {
     constructor(sceneManager) {
       this.sceneManager = sceneManager;
       this.platforms = [];
       this.config = GameConfig.platform;
+      this.lastJumperPosition = null;
+      this.lastDirection = null;
+    }
+
+    setJumperLandingPosition(position) {
+      this.lastJumperPosition = { x: position.x, z: position.z };
+    }
+
+    _determineDirection() {
+      if (this.platforms.length <= 1) {
+        this.lastDirection = Helpers.getRandomBoolean() ? 'xDir' : 'zDir';
+        return this.lastDirection;
+      }
+      const currentDir = this.getDirection();
+      // 70% continue same direction, 30% change
+      if (Math.random() < 0.7) {
+        this.lastDirection = currentDir === 'x' ? 'xDir' : 'zDir';
+      } else {
+        this.lastDirection = currentDir === 'x' ? 'zDir' : 'xDir';
+      }
+      return this.lastDirection;
     }
 
     createPlatform(options = {}) {
       const type = options.type || (Helpers.getRandomBoolean() ? 'cube' : 'cylinder');
-      const direction = options.direction || (Helpers.getRandomBoolean() ? 'xDir' : 'zDir');
+      const direction = options.direction || this._determineDirection();
       const platform = new Platform(type);
 
       if (this.platforms.length === 0) {
@@ -385,25 +961,35 @@
       const physics = GameConfig.physics;
       const maxTime = 2 * physics.maxYSpeed / physics.gravity;
       const maxDistance = physics.maxXSpeed * maxTime;
-      return maxDistance * 0.85;
+      return maxDistance * 0.8;
     }
 
     _calculateNextPosition(newPlatform, direction, options = {}) {
       const lastPlatform = this.platforms[this.platforms.length - 1];
-      const lastPos = lastPlatform.position;
+      const lastPlatformPos = lastPlatform.position;
       const lastSize = lastPlatform.getHalfSize();
       const newSize = newPlatform.getHalfSize();
+
+      // Use jumper's actual landing position if available
+      const jumpFromPos = this.lastJumperPosition || { x: lastPlatformPos.x, z: lastPlatformPos.z };
 
       const maxJumpable = this._getMaxJumpableDistance();
       const maxGap = Math.min(this.config.maxDistance, maxJumpable);
       const distance = options.distance || Helpers.getRandomValue(this.config.minDistance, maxGap);
 
-      let x = lastPos.x, y = lastPos.y, z = lastPos.z;
+      let x, y, z;
+      y = lastPlatformPos.y;
 
       if (direction === 'zDir') {
-        z = lastPos.z - distance - lastSize.z - newSize.z;
+        x = jumpFromPos.x;
+        z = jumpFromPos.z - distance - newSize.z;
+        const minZ = lastPlatformPos.z - lastSize.z - this.config.minDistance - newSize.z;
+        z = Math.min(z, minZ);
       } else {
-        x = lastPos.x + distance + lastSize.x + newSize.x;
+        z = jumpFromPos.z;
+        x = jumpFromPos.x + distance + newSize.x;
+        const minX = lastPlatformPos.x + lastSize.x + this.config.minDistance + newSize.x;
+        x = Math.max(x, minX);
       }
 
       return { x, y, z };
@@ -431,9 +1017,11 @@
       if (this.platforms.length < 2) return null;
       const from = this.getCurrentPlatform();
       const to = this.getTargetPlatform();
-      if (from.position.z === to.position.z) return 'x';
-      if (from.position.x === to.position.x) return 'z';
-      return null;
+      // Calculate actual displacement to determine jump direction
+      const dx = Math.abs(to.position.x - from.position.x);
+      const dz = Math.abs(to.position.z - from.position.z);
+      // Direction is determined by which axis has greater displacement
+      return dx > dz ? 'x' : 'z';
     }
 
     get count() { return this.platforms.length; }
@@ -444,13 +1032,16 @@
         platform.dispose();
       });
       this.platforms = [];
+      this.lastJumperPosition = null;
+      this.lastDirection = null;
     }
 
     dispose() { this.clear(); }
   }
 
+
   // ============================================
-  // Managers: CameraController (Smooth Lerp)
+  // Managers: CameraController (Smooth Easing)
   // ============================================
   class CameraController {
     constructor(sceneManager) {
@@ -458,7 +1049,14 @@
       this.config = GameConfig.camera;
       this.currentPosition = new THREE.Vector3(0, 0, 0);
       this.targetPosition = new THREE.Vector3(0, 0, 0);
+      this.startPosition = new THREE.Vector3(0, 0, 0);
       this.isAnimating = false;
+      this.animationProgress = 0;
+      this.animationDuration = 60;
+    }
+
+    _easeOutCubic(t) {
+      return 1 - Math.pow(1 - t, 3);
     }
 
     _lerp(start, end, factor) {
@@ -468,7 +1066,9 @@
     updateTarget(fromPlatform, toPlatform) {
       const fromPos = fromPlatform.position;
       const toPos = toPlatform.position;
+      this.startPosition.copy(this.currentPosition);
       this.targetPosition.set((fromPos.x + toPos.x) / 2, 0, (fromPos.z + toPos.z) / 2);
+      this.animationProgress = 0;
       this._animateToTarget();
     }
 
@@ -481,13 +1081,12 @@
     _animate() {
       const current = this.currentPosition;
       const target = this.targetPosition;
-      const smoothFactor = this.config.smoothFactor;
+      const start = this.startPosition;
 
-      const dx = Math.abs(target.x - current.x);
-      const dz = Math.abs(target.z - current.z);
-      const threshold = 0.01;
+      this.animationProgress += 1 / this.animationDuration;
 
-      if (dx < threshold && dz < threshold) {
+      if (this.animationProgress >= 1) {
+        this.animationProgress = 1;
         current.x = target.x;
         current.z = target.z;
         this.sceneManager.lookAt(new THREE.Vector3(current.x, 0, current.z));
@@ -496,8 +1095,9 @@
         return;
       }
 
-      current.x = this._lerp(current.x, target.x, smoothFactor);
-      current.z = this._lerp(current.z, target.z, smoothFactor);
+      const easedProgress = this._easeOutCubic(this.animationProgress);
+      current.x = this._lerp(start.x, target.x, easedProgress);
+      current.z = this._lerp(start.z, target.z, easedProgress);
 
       this.sceneManager.lookAt(new THREE.Vector3(current.x, 0, current.z));
       this.sceneManager.render();
@@ -510,11 +1110,12 @@
     reset() {
       this.currentPosition.set(0, 0, 0);
       this.targetPosition.set(0, 0, 0);
+      this.startPosition.set(0, 0, 0);
       this.isAnimating = false;
+      this.animationProgress = 0;
       this.lookAtCurrent();
     }
   }
-
 
   // ============================================
   // Managers: PhysicsManager (Improved Landing Detection)
@@ -578,43 +1179,53 @@
       const platPos = platform.position;
       const halfSize = platform.getHalfSize();
 
-      const jMinX = jumperPos.x - jumperRadius;
-      const jMaxX = jumperPos.x + jumperRadius;
-      const jMinZ = jumperPos.z - jumperRadius;
-      const jMaxZ = jumperPos.z + jumperRadius;
-
-      const pMinX = platPos.x - halfSize.x;
-      const pMaxX = platPos.x + halfSize.x;
-      const pMinZ = platPos.z - halfSize.z;
-      const pMaxZ = platPos.z + halfSize.z;
-
-      const centerInX = jumperPos.x >= pMinX && jumperPos.x <= pMaxX;
-      const centerInZ = jumperPos.z >= pMinZ && jumperPos.z <= pMaxZ;
-      const centerInPlatform = centerInX && centerInZ;
-
-      const tolerance = jumperRadius * 0.3;
-      const fullyInX = jMinX >= pMinX - tolerance && jMaxX <= pMaxX + tolerance;
-      const fullyInZ = jMinZ >= pMinZ - tolerance && jMaxZ <= pMaxZ + tolerance;
-      const fullyOn = centerInPlatform && fullyInX && fullyInZ;
-
-      const overlapX = jMaxX > pMinX && jMinX < pMaxX;
-      const overlapZ = jMaxZ > pMinZ && jMinZ < pMaxZ;
-      const partiallyOn = overlapX && overlapZ && !fullyOn;
-
+      // For cylinder platforms, use circular bounds check
       if (platform.type === 'cylinder') {
         const dx = jumperPos.x - platPos.x;
         const dz = jumperPos.z - platPos.z;
         const distFromCenter = Math.sqrt(dx * dx + dz * dz);
         const platformRadius = halfSize.x;
 
-        const fullyOnCylinder = distFromCenter + jumperRadius * 0.7 <= platformRadius;
-        const partiallyOnCylinder = distFromCenter - jumperRadius < platformRadius && 
-                                     distFromCenter + jumperRadius > platformRadius;
+        // More generous - if center is on platform, count as fully on
+        const centerOnPlatform = distFromCenter <= platformRadius;
+        const fullyOnCylinder = distFromCenter + jumperRadius * 0.5 <= platformRadius;
+        const partiallyOnCylinder = distFromCenter < platformRadius + jumperRadius && 
+                                     distFromCenter > platformRadius - jumperRadius;
 
-        return { fully: fullyOnCylinder, partial: partiallyOnCylinder && !fullyOnCylinder };
+        return { 
+          fully: fullyOnCylinder || centerOnPlatform, 
+          partial: partiallyOnCylinder && !centerOnPlatform 
+        };
       }
 
-      return { fully: fullyOn || centerInPlatform, partial: partiallyOn };
+      // For cube platforms
+      const pMinX = platPos.x - halfSize.x;
+      const pMaxX = platPos.x + halfSize.x;
+      const pMinZ = platPos.z - halfSize.z;
+      const pMaxZ = platPos.z + halfSize.z;
+
+      // Check if jumper center is within platform bounds
+      const centerInX = jumperPos.x >= pMinX && jumperPos.x <= pMaxX;
+      const centerInZ = jumperPos.z >= pMinZ && jumperPos.z <= pMaxZ;
+      const centerInPlatform = centerInX && centerInZ;
+
+      // If center is on platform, consider it fully on (more forgiving)
+      if (centerInPlatform) {
+        return { fully: true, partial: false };
+      }
+
+      // Calculate jumper bounds for edge detection
+      const jMinX = jumperPos.x - jumperRadius;
+      const jMaxX = jumperPos.x + jumperRadius;
+      const jMinZ = jumperPos.z - jumperRadius;
+      const jMaxZ = jumperPos.z + jumperRadius;
+
+      // Check if jumper is partially on platform (edge case)
+      const overlapX = jMaxX > pMinX && jMinX < pMaxX;
+      const overlapZ = jMaxZ > pMinZ && jMinZ < pMaxZ;
+      const partiallyOn = overlapX && overlapZ;
+
+      return { fully: false, partial: partiallyOn };
     }
 
     _getDistanceToCenter(jumperPos, platform) {
@@ -816,17 +1427,33 @@
 
 
   // ============================================
-  // Core: Game (Main Orchestrator)
+  // Core: Game (Main Orchestrator with Enhanced Rendering)
   // ============================================
   class Game {
     constructor() {
+      // Core systems
       this.sceneManager = new SceneManager();
       this.eventManager = new EventManager(this.sceneManager.canvas);
+      
+      // Rendering systems
+      this.textureSystem = new TextureSystem();
+      this.shadowSystem = new ShadowSystem(this.sceneManager);
+      this.backgroundSystem = new BackgroundSystem(this.sceneManager);
+      
+      // Setup texture system for entities
+      Platform.setTextureSystem(this.textureSystem);
+      Jumper.setTextureSystem(this.textureSystem);
+      
+      // Enable soft shadows
+      this.shadowSystem.enable('high');
+      
+      // Managers
       this.platformManager = new PlatformManager(this.sceneManager);
       this.cameraController = new CameraController(this.sceneManager);
       this.physicsManager = new PhysicsManager();
       this.scoreManager = new ScoreManager();
       this.powerBarManager = new PowerBarManager();
+      
       this.jumper = null;
 
       this.state = {
@@ -881,6 +1508,8 @@
       this.physicsManager.reset();
       this.scoreManager.reset();
       this.cameraController.reset();
+      this.textureSystem.reset();
+      this.backgroundSystem.updatePosition(0, 0);
 
       this.platformManager.createPlatform();
       this.platformManager.createPlatform();
@@ -948,23 +1577,34 @@
         case 3:
           this.scoreManager.addScore('center');
           this._resetJumperState();
+          this.platformManager.setJumperLandingPosition(this.jumper.position);
           this.platformManager.createPlatform();
           this._updateCamera();
           break;
         case 2:
           this.scoreManager.addScore('normal');
           this._resetJumperState();
+          this.platformManager.setJumperLandingPosition(this.jumper.position);
           this.platformManager.createPlatform();
           this._updateCamera();
           break;
         case -2:
-          this._animateFallDown();
-          this._triggerGameOver();
+          // Fell off current platform - add slight horizontal movement
+          const fallVel = { x: 0, z: 0 };
+          const currentPlat = this.platformManager.getCurrentPlatform();
+          if (currentPlat) {
+            // Move away from platform center
+            const dx = this.jumper.position.x - currentPlat.position.x;
+            const dz = this.jumper.position.z - currentPlat.position.z;
+            const dist = Math.sqrt(dx * dx + dz * dz) || 1;
+            fallVel.x = (dx / dist) * 0.1;
+            fallVel.z = (dz / dist) * 0.1;
+          }
+          this._animateFallDown(fallVel, () => this._triggerGameOver());
           break;
         case -1:
         case -3:
           this._animateFallOff(landingState);
-          this._triggerGameOver();
           break;
       }
     }
@@ -979,52 +1619,107 @@
     _updateCamera() {
       const currentPlatform = this.platformManager.getCurrentPlatform();
       const targetPlatform = this.platformManager.getTargetPlatform();
+
       if (currentPlatform && targetPlatform) {
         this.cameraController.updateTarget(currentPlatform, targetPlatform);
+        
+        const centerX = (currentPlatform.position.x + targetPlatform.position.x) / 2;
+        const centerZ = (currentPlatform.position.z + targetPlatform.position.z) / 2;
+        
+        this.shadowSystem.updateShadowCamera(new THREE.Vector3(centerX, 0, centerZ));
+        this.backgroundSystem.updatePosition(centerX, centerZ);
       }
     }
 
-    _animateFallDown() {
+    _animateFallDown(horizontalVelocity = { x: 0, z: 0 }, onComplete = null) {
       const groundLevel = -GameConfig.jumper.height / 2;
+      let velocityY = 0;
+      const gravity = 0.015;
+      const friction = 0.98;
+
       const animate = () => {
         if (this.jumper.position.y >= groundLevel) {
-          this.jumper.position.y -= GameConfig.physics.fallSpeed;
+          // Apply gravity
+          velocityY += gravity;
+          this.jumper.position.y -= velocityY;
+          
+          // Apply horizontal movement with friction
+          this.jumper.position.x += horizontalVelocity.x;
+          this.jumper.position.z += horizontalVelocity.z;
+          horizontalVelocity.x *= friction;
+          horizontalVelocity.z *= friction;
+          
+          // Add tumbling rotation during fall
+          this.jumper.rotation.x += 0.05;
+          this.jumper.rotation.z += 0.03;
+          
           this.sceneManager.render();
           requestAnimationFrame(animate);
+        } else {
+          // Animation complete - trigger callback
+          if (onComplete) onComplete();
         }
       };
+
       animate();
     }
 
     _animateFallOff(state) {
       const direction = this.platformManager.getDirection();
       const rotateAxis = direction === 'z' ? 'x' : 'z';
+      const moveAxis = direction === 'z' ? 'z' : 'x';
       const rotateDirection = state === -1 ? -1 : 1;
       const targetRotation = rotateDirection * Math.PI / 2;
+      
+      // Calculate horizontal velocity away from platform edge
+      const currentPlatform = this.platformManager.getCurrentPlatform();
+      const targetPlatform = this.platformManager.getTargetPlatform() || currentPlatform;
+      
+      // Determine fall direction based on landing state
+      let horizontalVelocity = { x: 0, z: 0 };
+      const fallSpeed = 0.15;
+      
+      if (state === -1) {
+        // Fell short - move backward (away from target)
+        horizontalVelocity[moveAxis] = direction === 'z' 
+          ? -fallSpeed * (this.jumper.position.z > targetPlatform.position.z ? 1 : -1)
+          : -fallSpeed * (this.jumper.position.x > targetPlatform.position.x ? 1 : -1);
+      } else if (state === -3) {
+        // Overshot - move forward (past target)
+        horizontalVelocity[moveAxis] = direction === 'z'
+          ? fallSpeed * (this.jumper.position.z > targetPlatform.position.z ? 1 : -1)
+          : fallSpeed * (this.jumper.position.x > targetPlatform.position.x ? 1 : -1);
+      }
 
+      const self = this;
       const animateRotation = () => {
-        const currentRotation = this.jumper.rotation[rotateAxis];
-        const reachedTarget = rotateDirection === -1 
+        const currentRotation = self.jumper.rotation[rotateAxis];
+        const reachedTarget = rotateDirection === -1
           ? currentRotation <= targetRotation
           : currentRotation >= targetRotation;
 
         if (!reachedTarget) {
-          this.jumper.rotation[rotateAxis] += rotateDirection * 0.1;
-          this.sceneManager.render();
+          self.jumper.rotation[rotateAxis] += rotateDirection * 0.1;
+          // Move horizontally while rotating
+          self.jumper.position[moveAxis] += horizontalVelocity[moveAxis] * 0.5;
+          self.sceneManager.render();
           requestAnimationFrame(animateRotation);
         } else {
-          this._animateFallDown();
+          self._animateFallDown(horizontalVelocity, () => self._triggerGameOver());
         }
       };
+
       animateRotation();
     }
 
     _triggerGameOver() {
       this.state.isGameOver = true;
+
       if (this.failCallback) {
+        // Small delay to let the final frame render
         setTimeout(() => {
           this.failCallback(this.scoreManager.getScore());
-        }, 1000);
+        }, 300);
       }
     }
 
@@ -1033,20 +1728,32 @@
       this.sceneManager.render();
     }
 
-    set onFail(callback) { this.failCallback = callback; }
-    get score() { return this.scoreManager.getScore(); }
+    set onFail(callback) {
+      this.failCallback = callback;
+    }
+
+    get score() {
+      return this.scoreManager.getScore();
+    }
 
     dispose() {
       this.eventManager.dispose();
       this.platformManager.dispose();
       this.scoreManager.dispose();
       this.powerBarManager.dispose();
-      if (this.jumper) this.jumper.dispose();
+      this.shadowSystem.dispose();
+      this.textureSystem.dispose();
+      this.backgroundSystem.dispose();
+
+      if (this.jumper) {
+        this.jumper.dispose();
+      }
+
       this.sceneManager.dispose();
     }
   }
 
-  // Export to global scope
+  // Expose Game class globally
   window.Game = Game;
 
 })();

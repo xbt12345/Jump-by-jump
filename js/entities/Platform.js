@@ -2,13 +2,21 @@ import GameConfig from '../utils/Constants.js';
 
 /**
  * Platform entity - represents a single platform (cube or cylinder)
- * Encapsulates platform creation and type detection
+ * Encapsulates platform creation and type detection with textured materials
  */
 class Platform {
+  static textureSystem = null;
+  
   constructor(type = 'cube', size = null) {
     this.type = type;
     this.size = size || this._generateRandomSize();
     this.mesh = this._createMesh();
+    this.mesh.castShadow = true;
+    this.mesh.receiveShadow = true;
+  }
+
+  static setTextureSystem(system) {
+    Platform.textureSystem = system;
   }
 
   _generateRandomSize() {
@@ -43,6 +51,11 @@ class Platform {
   }
 
   _createMaterial() {
+    // Use textured material if texture system is available
+    if (Platform.textureSystem) {
+      return Platform.textureSystem.createPlatformMaterial(this.type);
+    }
+    // Fallback to basic material
     const color = this.type === 'cube' 
       ? GameConfig.platform.cube.color 
       : GameConfig.platform.cylinder.color;
