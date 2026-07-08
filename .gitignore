@@ -1,0 +1,13 @@
+# Build outputs
+build/
+output/*.exe
+*.o
+*.obj
+
+# IDE personal settings
+.vscode/settings.json
+.vscode/c_cpp_properties.json
+
+# OS files
+.DS_Store
+Thumbs.db
